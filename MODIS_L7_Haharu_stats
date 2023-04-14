@@ -120,4 +120,3 @@ mean_wet <- mean (wetseason$NDVI)
 
 mean_dryL7 <- mean(dryseason2$NDVI, na.rm=TRUE)
 mean_wetL7 <- mean(wetseason2$NDVI, na.rm=TRUE)
-
