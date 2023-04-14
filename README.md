@@ -21,7 +21,7 @@ https://code.earthengine.google.com/?asset=users/pennybgodwin/Wunga_Well_2_32751
 
 **Median_Haharu_MODIS_NDVI** is the GEE script to create median MODIS Terra NDVI values at the Haharu district scale, using the Haharu shapefile that has been shared here. We downloaded NDVI data from GEE as a .csv file.
 
-
+**MODIS_L7_Haharu_stats** is the R script for computing Haharu scale NDVI statistics for MODIS and Landsat 7 timeseries
 
 
 
