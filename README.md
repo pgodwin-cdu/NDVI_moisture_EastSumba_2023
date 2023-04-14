@@ -26,5 +26,5 @@ https://code.earthengine.google.com/?asset=users/pennybgodwin/Wunga_Well_2_32751
 **NDVI_L7_Haharu.tif** is a .tif file generated in GEE as a composite image of median NDVI values between 2000 and 2018 with a cloud mask applied. This script we used to create this image is here: <br>
 https://code.earthengine.google.com/c3118944cf7c27df7b3eb7fcdc4013e7
 
-**CCF_NDVI_Rainfall** R Script to generate cross correlation values and plots for monthly Landsat 7 NDVI data at the Haharu district scale and monthly rainfall data.
+**CCF_NDVI_Rainfall** is the R Script we used to generate cross correlation values and plots for monthly Landsat 7 NDVI data at the Haharu district scale and monthly rainfall data.
 
