@@ -30,3 +30,5 @@ https://code.earthengine.google.com/c3118944cf7c27df7b3eb7fcdc4013e7
 
 **landcover_classification** is the link to the GEE script for generating the Sentinel derived landcover classification for the Haharu district: <br> https://code.earthengine.google.com/d1d2edb9bdda7c04817b74d3b74f52f0 
 
+**seasonal_NDVI_site_analysis_R** is the R script we used to generate NDVI ranges by site and site type for anomalous wet seasons
+
