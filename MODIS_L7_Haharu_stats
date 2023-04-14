@@ -1,0 +1,123 @@
+library(plyr)
+library(dplyr)
+library(lubridate)
+library(tidyverse)
+
+#import the Landsat 7 vegetation Haharu scale data (this is an export from the GEE script).
+#import the MODIS NDVI times series data (this is an export from the GEE script).
+data <-read.csv(file="MODIS_NDVI_99_18.csv")
+data2 <- read.csv(file="L7_NDVI_00_18.csv")
+
+head(data)
+data$date <- as.Date(data$system.time_start, "%b %d, %Y")
+
+head(data2)
+data2$date <- as.Date(data2$system.time_start, "%b %d, %Y")
+
+#use lubridate and dplyr to aggregate to monthly
+data$month <- floor_date(data$date,"month")
+head(data)
+
+data2$month <- floor_date(data2$date,"month")
+head(data2)
+
+#remove anomalous value where NDVI <0
+
+data2[data2$NDVI > 0,]
+
+#check data type NDVI
+typeof(data$NDVI) #character
+#remove comma from string $ change to numeric
+
+data$NDVI2 <- as.numeric(gsub(",", "", data$NDVI))
+head(data)
+
+data$NDVI_scaled <- data$NDVI2/10000
+
+#change to numeric
+
+data$NDVI <- as.numeric(data$NDVI)
+
+# calculate the mean NDVI for each month
+ts_monthly<- data %>%
+  group_by(month) %>%
+  summarise(NDVI = mean(NDVI_scaled))
+
+head(ts_monthly)
+
+ts_monthly2<- data2 %>%
+  group_by(month) %>%
+  summarise(NDVI = mean(NDVI))
+
+head(ts_monthly2)
+
+
+#add a new column with month only
+
+ts_monthly$justmonth <- format(ts_monthly$month,"%m")
+head(ts_monthly)
+ts_monthly2$justmonth <- format(ts_monthly2$month,"%m")
+head(ts_monthly2)
+
+#Now we need to exclude wet season values so that we are focussing on what's happening with NDVI in the dry season. 
+#We can do this using %in% with ifelse from tidyverse
+
+seasonal <- ts_monthly %>%
+  mutate(Season = ifelse(justmonth %in% 7:10, 'dry season', 'wet season'))
+
+seasonal2 <- ts_monthly2 %>%
+  mutate(Season = ifelse(justmonth %in% 7:10, 'dry season', 'wet season'))
+
+
+#get min and max values (whole time series)
+max <- max(ts_monthly$NDVI)
+min <- min (ts_monthly$NDVI)
+
+#calculate time series means
+mean_L7 <- mean(ts_monthly2$NDVI, na.rm=TRUE)
+mean_MODIS <- mean(ts_monthly$NDVI, na.rm=TRUE)
+
+#compute time series standard deviation
+std_L7 <- sd(ts_monthly2$NDVI, na.rm=TRUE)
+std_MODIS <- sd(ts_monthly$NDVI, na.rm=TRUE)
+
+#compute standard error for each time series
+#standard error function
+SE_function <- function(x) sd(x)/sqrt(length(x))
+#omit NA rows
+L7_clean <- na.omit(ts_monthly2)
+#compute Landsat 7 standard error
+SE_L7 <- SE_function(L7_clean$NDVI)
+
+MODIS_clean <-na.omit(ts_monthly)
+#compute MODIS standard error
+SE_MODIS <- SE_function(MODIS_clean$NDVI)
+
+#compute CV both timeseries
+CV_L7 <- std_L7/mean_L7
+CV_MODIS <- std_MODIS/mean_MODIS
+
+
+
+#what about min & max dry season daily values?
+#add a month column to the ts df
+
+#filter to just dry season
+
+dryseason <- filter(seasonal, Season =="dry season")
+wetseason <- filter(seasonal, Season=="wet season")
+
+wetseason2 <- filter(seasonal2, Season=="wet season")
+dryseason2 <- filter(seasonal2, Season =="dry season")
+
+max_dry <- max(dryseason$NDVI)
+min_dry <- min (dryseason$NDVI)
+print(paste(maxstring, max_dry))   
+print(paste(minstring,min_dry))
+
+mean_dry <- mean(dryseason$NDVI)
+mean_wet <- mean (wetseason$NDVI)
+
+mean_dryL7 <- mean(dryseason2$NDVI, na.rm=TRUE)
+mean_wetL7 <- mean(wetseason2$NDVI, na.rm=TRUE)
+
