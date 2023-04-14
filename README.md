@@ -28,3 +28,5 @@ https://code.earthengine.google.com/c3118944cf7c27df7b3eb7fcdc4013e7
 
 **CCF_NDVI_Rainfall** is the R Script we used to generate cross correlation values and plots for monthly Landsat 7 NDVI data at the Haharu district scale and monthly rainfall data.
 
+**landcover_classification** is the link to the GEE script for generating the Sentinel derived landcover classification for the Haharu district: <br> https://code.earthengine.google.com/d1d2edb9bdda7c04817b74d3b74f52f0 
+
