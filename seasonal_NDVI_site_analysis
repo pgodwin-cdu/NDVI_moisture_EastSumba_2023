@@ -1,0 +1,918 @@
+library(lubridate)
+library(dplyr)
+library(zoo)
+library(ggplot2)
+library(ggpubr)
+library(data.table)
+library(tidyverse)
+library(lfstat)
+
+#read NDVI data
+
+NDVI_list = list.files(pattern="*.csv")
+NDVI_list
+myfiles = lapply(NDVI_list, read.csv)
+
+#using tidyverse, read in data from .csv files and transform to a df
+
+tbl <-
+  list.files(pattern = "*.csv") %>% 
+  map_df(~read_csv(., col_types = cols(.default = "c")))
+
+head(tbl)
+tail(tbl)
+#add date column with as.Date date formats
+tbl$Date <- as.Date(tbl$date, "%Y-%m-%d")
+head(tbl)
+
+options(stringsAsFactors = FALSE)
+
+# Now need to summarise data by month
+
+#add a month column to the data frame 
+## (note all this code comes from here:https://www.earthdatascience.org/courses/earth-analytics/time-series-data/summarize-time-series-by-month-in-r/
+
+NDVI_monthly <- tbl %>%
+  mutate(month = month(Date))
+head(NDVI_monthly)
+
+#add a year column to the data frame
+
+NDVI_month_year <- NDVI_monthly %>%
+  mutate(year =year(Date))
+head(NDVI_month_year)
+dim(NDVI_month_year) #4579 12
+
+
+# sort data by time
+NDVI_month_year <- NDVI_month_year[
+  with(NDVI_month_year, order(NDVI_month_year$year, NDVI_month_year$month)),
+]
+head(NDVI_month_year)
+tail(NDVI_month_year)
+dim(NDVI_month_year) #4579 12
+summary(NDVI_month_year)
+
+
+clean <- NDVI_month_year[-c(1,5:9)] #remove unnecessary columns
+head(clean)
+dim(clean) #4418 5
+clean <- na.omit(clean) #remove rows with NA values 
+dim(clean) #4579 5 
+tail(clean)
+
+#set strings as factors to false globally
+
+options(stringsAsFactors = FALSE)
+
+#add column of water year
+#Use the lfstat package, apply.seasonal function
+
+head(clean)
+tail(clean)
+clean$wy <-water_year(clean$Date,origin ="11" )
+
+#still have overlapping tile problem in the data, need to fix this with a group_by
+#need to change NDVI to numerical first
+
+head(clean)
+clean$NDVI <- as.numeric(clean$NDVI) #change to numberic
+
+cleandata <- clean %>%
+  group_by(Date, plot_name, wy) %>%
+  summarise_at(vars(NDVI),
+               list(NDVI=median))
+
+tail(cleandata)
+
+#create two dates to subset the reference period (1999 to 2018)
+
+date1 <- as.Date ("1999-11-01")
+date2 <- as.Date("2018-05-30")
+date3 <-as.Date("2019-12-31")
+
+reference<- cleandata [cleandata$Date >=date1 & cleandata$Date <= date2,]
+reference2<- cleandata [cleandata$Date >=date1 & cleandata$Date <= date3,]
+dim(reference) # 917 3
+head(reference)
+
+ranges <- reference %>%
+  group_by(plot_name) %>%
+  summarise_at(vars(NDVI),
+               list(NDVI=mean))
+
+class(myfiles)
+class(myfiles[1])
+head(cleandata)
+
+wy_meds <- cleandata %>%
+  group_by(plot_name, wy) %>%
+  summarise_at(vars(NDVI),
+               list(NDVI=median))
+
+head(wy_meds)
+
+subset_2000 <- subset(cleandata, wy =="2000") #wet
+head(subset_2000)
+subset_2005 <- subset(cleandata, wy=="2005") #dry
+subset_2011 <-subset(cleandata, wy="2011") #wet
+subset_2018 <-subset(cleandata, wy="2018") #wet
+subset_2015 <-subset(cleandata, wy="2015") #dry
+subset_2004 <-subset(cleandata, wy="2004") #dry
+subset_2017 <-subset(cleandata, wy="2017") #dry
+
+subset_2000_1 <- subset(cleandata, wy=="2005" & plot_name=="1_L7_NDVI")
+subset_2005_1 <- subset(cleandata, wy=="2005" & plot_name=="1_L7_NDVI") #dry
+subset_2011_1 <-subset(cleandata, wy="2011" & plot_name=="1_L7_NDVI") #wet
+subset_2018_1 <-subset(cleandata, wy="2018" & plot_name=="1_L7_NDVI") #wet
+subset_2015_1 <-subset(cleandata, wy="2015" & plot_name=="1_L7_NDVI") #dry
+subset_2004_1 <-subset(cleandata, wy="2004" & plot_name=="1_L7_NDVI") #dry
+subset_2017_1 <-subset(cleandata, wy="2017" & plot_name=="1_L7_NDVI") #dry
+
+subset_1 <- subset(reference, plot_name =="1_L7_NDVI")
+subset_2 <- subset(reference, plot_name =="2_L7_NDVI")
+subset_3 <- subset(reference, plot_name =="3_L7_NDVI")
+
+list_wys <- c("2000", "2005", "2011","2018","2015", "2017", "2018")
+
+subset_p1 <- subset_1 %>%
+  filter(wy %in% list_wys)
+
+subset_p2 <- subset_2 %>%
+  filter(wy %in% list_wys)
+
+subset_p3 <- subset_3 %>%
+  filter(wy %in% list_wys)
+
+
+plot1 <- boxplot(reference$NDVI[reference$plot_name == "1_L7_NDVI"], subset_2000_1$NDVI, subset_2004_1$NDVI,
+        subset_2005_1$NDVI, subset_2011_1$NDVI,
+        subset_2015_1$NDVI, subset_2017_1$NDVI, subset_2018_1$NDVI,
+        ylab="NDVI", names=c("2000:2018", "2000", "2004", "2005", "2011","2015","2017","2018"), 
+        show.names=TRUE,
+        col=c("powderblue", "seagreen3", "powderblue", "seagreen3"))
+
+plot_1
+
+
+plot2 <- boxplot(reference$NDVI[reference$plot_name == "2_L7_NDVI"], 
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2000"], #wet
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2004"], #dry
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2005"], #dry
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2011"], #wet
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2015"], #dry
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2017"], #dry
+                 reference$NDVI[reference$plot_name == "2_L7_NDVI" & reference$wy== "2018"], #wet
+                 ylab="NDVI", names=c("2000:2018", "2000(wet)", "2004(dry)", "2005(dry)", "2011(wet)",
+                                      "2015(dry)","2017(dry)","2018(wet)"), 
+                 show.names=TRUE,
+                 col=c("seagreen3", "cornflowerblue", "brown", "bisque4", "blue","chocolate4", "chocolate", "cyan"))
+
+#read in rainfall anomaly data
+anomaly <- read.csv("rfall_anomaly1.csv")
+head(anomaly)
+class(anomaly$Date)
+
+anomaly$as_Date <- as.Date(anomaly$Date, "%m/%d/%Y")
+head(anomaly)
+
+#add wy to anomaly
+#anomaly$wy <-water_year(anomaly$as_Date,origin ="11" )
+head(anomaly)
+tail(anomaly)
+anomaly_ref <- anomaly [anomaly$as_Date >=date1 & anomaly$as_Date <= date3,]
+
+#merge rainfall anomaly & NDVI data on wy
+#merged <- merge(anomaly_ref, reference, by ="wy")
+
+str(reference2)
+str(anomaly_ref)
+merged <-merge(anomaly_ref,reference2, by="wy")
+head(merged)
+names(merged)
+
+#add rainfall bins to rainfall data
+# 0 - 300(1)
+# 301 - 600 (2)
+# 601 - 900 (3)
+# 901 - 1200 (4)
+# > 1200 (5)
+
+merged$rain_bin[merged$Total.rainfall..mm. >300 & merged$Total.rainfall..mm.<= 600] <- "1: 301-600"
+merged$rain_bin[merged$Total.rainfall..mm. > 600 & merged$Total.rainfall..mm.<= 900] <- "2: 601-900"
+merged$rain_bin[merged$Total.rainfall..mm. > 900 & merged$Total.rainfall..mm.<= 1200] <- "3: 901-1200"
+merged$rain_bin[merged$Total.rainfall..mm. > 1200] <- "4: >1200"
+
+merged$rain_bin_1 = NA
+merged$rain_bin_1[merged$Total.rainfall..mm. >300 & merged$Total.rainfall..mm.<= 500] <- "1: 301-500"
+merged$rain_bin_1[merged$Total.rainfall..mm. > 500 & merged$Total.rainfall..mm.<= 700] <- "2: 501-700"
+merged$rain_bin_1[merged$Total.rainfall..mm. > 700 & merged$Total.rainfall..mm.<= 900] <- "3: 701-900"
+merged$rain_bin_1[merged$Total.rainfall..mm. > 900 & merged$Total.rainfall..mm. <=1100] <- "4: 901: 1100"
+merged$rain_bin_1[merged$Total.rainfall..mm. > 1100] <- "5: > 1100"
+
+merged$drybin <- NA
+merged$drybin[merged$Rainfall.from.June.to.October..mm.<= 20] <- "1:0-20"
+merged$drybin[merged$Rainfall.from.June.to.October..mm.> 20 & merged$Rainfall.from.June.to.October..mm. <= 50] <- "2:21-50"
+merged$drybin[merged$Rainfall.from.June.to.October..mm.> 50] <- "3:>50"
+
+
+head(merged)
+
+
+#summarise by code
+anomalies <- merged %>%
+  group_by(plot_name) %>%
+  summarise_at(vars(NDVI),
+               list(NDVI=mean))
+
+head(anomalies)
+
+anomaly_1 <- subset(merged, plot_name =="1_L7_NDVI")
+anomaly_2 <- subset(merged, plot_name =="2_L7_NDVI")
+anomaly_3 <- subset(merged, plot_name =="3_L7_NDVI")
+anomaly_4 <- subset(merged, plot_name =="4_L7_NDVI")
+anomaly_5 <- subset(merged, plot_name =="5_L7_NDVI")
+anomaly_6 <- subset(merged, plot_name =="6_L7_NDVI")
+anomaly_7 <- subset(merged, plot_name =="7_L7_NDVI")
+anomaly_8 <- subset(merged, plot_name =="8_L7_NDVI")
+anomaly_9 <- subset(merged, plot_name =="9_L7_NDVI")
+
+#Note, site 11 is used in the data as site "10" as the original site "11" was removed from the analysis due to lack of suitability 
+anomaly_11 <- subset(merged, plot_name =="11_L7_NDVI")
+
+plots <- list(anomaly_1, anomaly_2,anomaly_3, anomaly_4, anomaly_5,anomaly_6, anomaly_7,
+              anomaly_8, anomaly_9, anomaly_11)
+
+merged$site_type <- NA
+
+merged$site_type[merged$plot_name == "1_L7_NDVI" | merged$plot_name == "3_L7_NDVI" | merged$plot_name == "4_L7_NDVI"] <-
+  "shallow groundwater"
+
+merged$site_type[merged$plot_name == "8_L7_NDVI" | merged$plot_name == "7_L7_NDVI" | merged$plot_name == "11_L7_NDVI" | merged$plot_name == "9_L7_NDVI" ] <-
+  "deep groundwater, with restoration"
+
+merged$site_type[merged$plot_name == "2_L7_NDVI" | merged$plot_name == "6_L7_NDVI" | merged$plot_name == "5_L7_NDVI"] <-
+  "deep groundwater, no intervention"
+
+#create groundwater subset of NDVI ranges
+anomalies_gw <- subset(merged, (plot_name %in% c("1_L7_NDVI","3_L7_NDVI","4_L7_NDVI")))
+
+class(anomalies_gw$Date.x)
+class(anomalies_gw$Date.y)
+
+anomalies_gw$month <- format(as.Date(anomalies_gw$Date.y, format="%Y-%m-%d"),"%b")
+
+#create plot of monthly NDVI for gw sites & limit to 2011 WY--------------------------
+
+merged_2011 <- merged[merged$wy==2011,]
+merged_2018 <- merged[merged$wy==2018,]
+tail(merged_2018)
+str(gw_2011)
+tail(merged)
+merged$month <- format(as.Date(merged$Date.y, format="%Y-%m-%d"),"%b")
+
+merged$month <- factor(merged$month, levels=c("Nov","Feb","Mar","Apr","May","Jul","Aug","Sep","Oct"))
+
+#aggregate to monthly
+merged_2011$year_month <- floor_date(merged_2011$Date.y,  # Create year-month column
+                                   "month")
+merged_2005 <- merged[merged$wy==2005,]
+merged_2005$year_month <- floor_date(merged_2005$Date.y,  # Create year-month column
+                                     "month")
+
+merged_2018$year_month <- floor_date(merged_2018$Date.y,  # Create year-month column
+                                     "month")
+
+data_aggr2 <- merged_2011 %>%                         # Aggregate data
+  group_by(year_month, site_type, month) %>% 
+  dplyr::summarize(value = mean(NDVI)) %>% 
+  as.data.frame()
+head(data_aggr2)   
+
+
+data_aggr2 <- na.omit(data_aggr2)
+
+
+data_aggr2005 <- merged_2005 %>%                         # Aggregate data
+  group_by(year_month, site_type, month) %>% 
+  dplyr::summarize(value = mean(NDVI)) %>% 
+  as.data.frame()
+head(data_aggr2005)
+
+data_aggr2005 <- na.omit(data_aggr2005)
+
+merged_2018 <- na.omit(merged_2018)
+
+data_aggr2018 <- merged_2018 %>%                         # Aggregate data
+  group_by(year_month, site_type) %>% 
+  dplyr::summarize(value = mean(NDVI), na.rm=TRUE) %>% 
+  as.data.frame()
+  
+
+
+#data_aggr2018<- na.omit(data_aggr2018)
+
+ggplot(data_aggr2, aes(x= month, y= value)) + 
+  geom_point(aes(color=site_type,linetype=site_type))+
+  geom_smooth(aes(color=site_type,method=lm))+
+  scale_color_manual(values=c("dodgerblue","forestgreen", "tomato"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.8)+
+  xlab("Shallow groundwater sites")+
+  ylab("")
+
+
+months_plot <- ggplot(data_aggr2, aes(x= year_month, y= value, colour=site_type)) + 
+  geom_point() +
+  scale_color_manual(values=c("dodgerblue","forestgreen", "tomato"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.75)+
+  xlab("") +
+  ylab("")
+
+
+p2011 <- months_plot + geom_line(data=data_aggr2,(aes(x=year_month,y=value))) +
+  theme(legend.title = element_blank())
+
+
+months_plot2005 <- ggplot(data_aggr2005, aes(x= year_month, y= value, colour=site_type)) + 
+  geom_point() +
+  scale_color_manual(values=c("dodgerblue","forestgreen", "tomato"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.75)+
+  xlab("") +
+  ylab("")
+
+p2005 <- months_plot2005 + geom_line(data=data_aggr2005,(aes(x=year_month,y=value))) +
+  theme(legend.title = element_blank())
+
+months_plot2018 <- ggplot(data_aggr2018, aes(x= year_month, y= value, colour=site_type)) + 
+  geom_point() +
+  scale_color_manual(values=c("dodgerblue","forestgreen", "tomato"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.75)+
+  xlab("") +
+  ylab("")
+
+p2018 <- months_plot2018 + geom_line(data=data_aggr2018,(aes(x=year_month,y=value)))+ theme(legend.title = element_blank())
+
+combined_years <- ggarrange(p2005, p2011, p2018, nrow=1, ncol=3, common.legend = TRUE, legend = "bottom",
+          labels = c("A - Very Dry", "B - Very Wet", "C - Wet"), hjust=-0.9) 
+
+
+fin1 <- bxp_meds_gw + theme(legend.position="none")
+
+
+#create deep gw sites subset
+anomalies_deepgw <- subset(merged, (plot_name %in% c("2_L7_NDVI","5_L7_NDVI","6_L7_NDVI")))
+#create deep regen sites subset
+anomalies_regen <- subset(merged, (plot_name %in% c("7_L7_NDVI","8_L7_NDVI","9_L7_NDVI", "11_L7_NDVI")))
+
+
+#function to create NDVI amplitude for each anomalous period
+apply_fun <- function(df)  {
+  amp_df = max(df$NDVI) - min(df$NDVI)
+  
+}
+
+max_df = group_by(wy) %>%
+  summarise_at(vars(NDVI),
+               list(NDVI=max))
+
+apply_fun2 <- function(df) {
+  
+  min_df = df %>%
+    group_by(wy) %>%
+    summarise_at(vars(NDVI),
+                 list(NDVI=min))
+  
+  max_df = df %>%
+    group_by(wy) %>%
+    summarise_at(vars(NDVI),
+                 list(NDVI=max))
+  
+  amp_df = max_df - min_df
+}
+
+apply_fun3 <- function(df)  {  
+  med_NDVI = median(df$NDVI)
+
+}
+  
+
+#MD years------
+
+#subset to Moderately Dry years
+MD <- subset(merged, Code =="MD")
+MD_1 <- subset(MD, plot_name =="1_L7_NDVI")
+MD_2 <- subset(MD, plot_name =="2_L7_NDVI")
+MD_3 <- subset(MD, plot_name =="3_L7_NDVI")
+MD_4 <- subset(MD, plot_name =="4_L7_NDVI")
+MD_5 <- subset(MD, plot_name =="5_L7_NDVI")
+MD_6 <- subset(MD, plot_name =="6_L7_NDVI")
+MD_7 <- subset(MD, plot_name =="7_L7_NDVI")
+MD_8 <- subset(MD, plot_name =="8_L7_NDVI")
+MD_9 <- subset(MD, plot_name =="9_L7_NDVI")
+MD_10 <- subset(MD, plot_name =="10_L7_NDVI")
+MD_11 <- subset(MD, plot_name =="11_L7_NDVI")
+
+#list of moderately dry values
+MDs <- list(MD_1, MD_2,MD_3, MD_4, MD_5,MD_6, MD_7,
+            MD_8, MD_9, MD_11)
+
+#create amplitudes for moderately dry years
+amps_MD <- lapply(MDs, apply_fun)
+
+amps_MD2 <- lapply(MDs, apply_fun2)
+
+#create moderately dry medians for all sites ------
+meds_MD <- lapply(MDs,apply_fun3)
+
+meds_MD
+
+#df of moderately dry amps
+amps_MD_df <- data.frame(amps_MD) 
+colnames(amps_MD_df) <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps_MD_df) <-"MD"
+
+amps_MD2_df <- data.frame(amps_MD2) 
+
+amps_MD2_df
+
+#remove wy columns
+amps_MD2_df <- amps_MD2_df[c(F,T)]
+
+colnames(amps_MD2_df) <- c("1","2","3","4","5","6","7","8","9","10","11")
+
+#now find median values 
+MDs_meds <- sapply(amps_MD2_df, median) 
+
+MDs_meds
+
+rownames(amps_MD2_df) <-"MD"
+
+
+
+#MW years-----
+#subset to Moderately Wet years
+MW <- subset(merged, Code =="MW")
+MW_1 <- subset(MW, plot_name =="1_L7_NDVI")
+MW_2 <- subset(MW, plot_name =="2_L7_NDVI")
+MW_3 <- subset(MW, plot_name =="3_L7_NDVI")
+MW_4 <- subset(MW, plot_name =="4_L7_NDVI")
+MW_5 <- subset(MW, plot_name =="5_L7_NDVI")
+MW_6 <- subset(MW, plot_name =="6_L7_NDVI")
+MW_7 <- subset(MW, plot_name =="7_L7_NDVI")
+MW_8 <- subset(MW, plot_name =="8_L7_NDVI")
+MW_9 <- subset(MW, plot_name =="9_L7_NDVI")
+MW_10 <- subset(MW, plot_name =="10_L7_NDVI")
+MW_11 <- subset(MW, plot_name =="11_L7_NDVI")
+
+#list of moderately dry values
+MWs <- list(MW_1, MW_2,MW_3, MW_4, MW_5,MW_6, MW_7,
+            MW_8, MW_9, MW_11)
+
+meds_MW <- lapply(MWs,apply_fun3)
+
+
+#create amplitudes for moderately dry years
+amps_MW <- lapply(MWs, apply_fun)
+amps_MW2 <- lapply(MWs, apply_fun2)
+amps_MW2_df <- data.frame(amps_MW2)
+amps_MW2_df <- amps_MW2_df[c(F,T)]
+
+colnames(amps_MD2_df) <- c("1","2","3","4","5","6","7","8","9","10","11")
+
+
+
+#df of moderately dry amps
+amps_MW_df <- data.frame(amps_MW) 
+colnames(amps_MW_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps_MW_df) <-"MW"
+
+amps_MW_df2 <- data.frame(amps_MW2) 
+colnames(amps_MW_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+
+#now find median values 
+MWs_meds <- sapply(amps_MW2_df, median) 
+
+MWs_meds
+
+
+
+#VD years ------
+
+#subset of Very Dry years
+VD <- subset(merged, Code =="VD")
+VD_1 <- subset(VD, plot_name =="1_L7_NDVI")
+VD_2 <- subset(VD, plot_name =="2_L7_NDVI")
+VD_3 <- subset(VD, plot_name =="3_L7_NDVI")
+VD_4 <- subset(VD, plot_name =="4_L7_NDVI")
+VD_5 <- subset(VD, plot_name =="5_L7_NDVI")
+VD_6 <- subset(VD, plot_name =="6_L7_NDVI")
+VD_7 <- subset(VD, plot_name =="7_L7_NDVI")
+VD_8 <- subset(VD, plot_name =="8_L7_NDVI")
+VD_9 <- subset(VD, plot_name =="9_L7_NDVI")
+VD_10 <- subset(VD, plot_name =="10_L7_NDVI")
+VD_11 <- subset(VD, plot_name =="11_L7_NDVI")
+
+VDs <- list(VD_1, VD_2,VD_3, VD_4, VD_5,VD_6, VD_7,
+              VD_8, VD_9, VD_11)
+
+apply_fun <- function(df)  {
+  amp_df = max(df$NDVI) - min(df$NDVI)
+
+}
+
+meds_VD <- lapply(VDs,apply_fun3)
+
+
+amps <- lapply(plots, apply_fun)
+amps_VD <- lapply(VDs, apply_fun)
+typeof(amps_VD)
+
+amps_VD_df <- data.frame(amps_VD) 
+colnames(amps_VD_df) <- c("1","2","3","4","5","6","7","8","9","10","11")
+
+rownames(amps_VD_df) <-"VD"
+
+
+#VW years-----
+#subset to Moderately Dry years
+VW <- subset(merged, Code =="VW")
+VW_1 <- subset(VW, plot_name =="1_L7_NDVI")
+VW_2 <- subset(VW, plot_name =="2_L7_NDVI")
+VW_3 <- subset(VW, plot_name =="3_L7_NDVI")
+VW_4 <- subset(VW, plot_name =="4_L7_NDVI")
+VW_5 <- subset(VW, plot_name =="5_L7_NDVI")
+VW_6 <- subset(VW, plot_name =="6_L7_NDVI")
+VW_7 <- subset(VW, plot_name =="7_L7_NDVI")
+VW_8 <- subset(VW, plot_name =="8_L7_NDVI")
+VW_9 <- subset(VW, plot_name =="9_L7_NDVI")
+VW_10 <- subset(VW, plot_name =="10_L7_NDVI")
+VW_11 <- subset(VW, plot_name =="11_L7_NDVI")
+
+sub_1516 <- subset(merged, wy==2015)
+sub_16 <- subset(merged, wy==2016)
+sub_1516 <- rbind(sub_1516, sub_16)
+
+sub1516_1 <- subset(sub_1516, plot_name =="1_L7_NDVI")
+sub1516_2 <- subset(sub_1516, plot_name =="2_L7_NDVI")
+sub1516_3 <- subset(sub_1516, plot_name =="3_L7_NDVI")
+sub1516_4 <- subset(sub_1516, plot_name =="4_L7_NDVI")
+sub1516_5 <- subset(sub_1516, plot_name =="5_L7_NDVI")
+sub1516_6 <- subset(sub_1516, plot_name =="6_L7_NDVI")
+sub1516_7 <- subset(sub_1516, plot_name =="7_L7_NDVI")
+sub1516_8 <- subset(sub_1516, plot_name =="8_L7_NDVI")
+sub1516_9 <- subset(sub_1516, plot_name =="9_L7_NDVI")
+sub1516_10 <- subset(sub_1516, plot_name =="10_L7_NDVI")
+sub1516_11 <- subset(sub_1516, plot_name =="11_L7_NDVI")
+
+Subs1516 <- list(sub1516_1, sub1516_2,sub1516_3, sub1516_4, sub1516_5,sub1516_6, sub1516_7,
+            sub1516_8, sub1516_9, sub1516_10, sub1516_11)
+
+meds_1516 <- sapply(Subs1516, apply_fun3)
+
+meds_1516
+
+meds_1516_df <- data.frame(meds_1516) 
+colnames(meds_1516_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(meds_1516_df) <-"1516"
+
+#list of moderately dry values
+VWs <- list(VW_1, VW_2,VW_3, VW_4, VW_5,VW_6, VW_7,
+            VW_8, VW_9, VW_11)
+
+#create amplitudes for moderately dry years
+amps_VW <- lapply(VWs, apply_fun)
+
+
+meds_VW <- lapply(VWs,apply_fun3)
+
+#df of moderately dry amps
+amps_VW_df <- data.frame(amps_VW) 
+colnames(amps_VW_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps_VW_df) <-"VW"
+
+amps_VW2 <- lapply(VWs, apply_fun2)
+amps_VW2_df <- data.frame(amps_VW2)
+amps_VW2_df <- amps_VW2_df[c(F,T)]
+
+VWs_meds <- sapply(amps_VW2_df, median) 
+
+VWs_meds
+
+
+colnames(amps_VW2_df) <- c("1","2","3","4","5","6","7","8","9","10","11")
+
+getwd()
+
+meds <- read.csv("medians_anomalies3.csv")
+
+write.csv(meds_1516_df, "medians_1516.csv")
+
+#W years-------
+
+#MW years-----
+#subset to Moderately Dry years
+W <- subset(merged, Code =="W")
+W_1 <- subset(W, plot_name =="1_L7_NDVI")
+W_2 <- subset(W, plot_name =="2_L7_NDVI")
+W_3 <- subset(W, plot_name =="3_L7_NDVI")
+W_4 <- subset(W, plot_name =="4_L7_NDVI")
+W_5 <- subset(W, plot_name =="5_L7_NDVI")
+W_6 <- subset(W, plot_name =="6_L7_NDVI")
+W_7 <- subset(W, plot_name =="7_L7_NDVI")
+W_8 <- subset(W, plot_name =="8_L7_NDVI")
+W_9 <- subset(W, plot_name =="9_L7_NDVI")
+W_10 <- subset(W, plot_name =="10_L7_NDVI")
+W_11 <- subset(W, plot_name =="11_L7_NDVI")
+
+#list of moderately dry values
+Ws <- list(W_1, W_2,W_3, W_4, W_5,W_6, W_7,
+            W_8, W_9, W_11)
+
+#create amplitudes for moderately dry years
+amps_W <- lapply(Ws, apply_fun)
+
+meds_W <- lapply(Ws,apply_fun3)
+
+#df of moderately dry amps
+amps_W_df <- data.frame(amps_W,) 
+colnames(amps_W_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps_W_df) <-"W"
+
+amps99_18 <- lapply(plots, apply_fun)
+#---------------
+meds99_19 <- lapply(plots, apply_fun3)
+
+amps99_18_df <- data.frame(amps99_18) 
+colnames(amps99_18_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps99_18_df) <-"All Years"
+
+amps_med <- c(0.37,0.43, 0.37, 0.33, 0.46, 0.39, 0.47, 0.34, 0.43, 0.35, 0.33)
+amps_med_df <- data.frame(t(sapply(amps_med,c)))
+colnames(amps_med_df)  <- c("1","2","3","4","5","6","7","8","9","10","11")
+rownames(amps_med_df) <-"Median all years"
+
+amps_all <- rbind(MDs_meds,MWs_meds,amps_VD_df,VWs_meds,amps_W_df, amps_med_df)
+meds_all <- rbind(meds_MD,meds_MW, meds_VD, meds_VW, meds_W, meds99_19)
+
+write.csv(meds_all, "medians_anomalies1.csv")
+#read in medians csv ----
+
+medians <- read.csv("medians_anomalies1.csv")
+
+head(medians)
+
+medians <- medians[,-1]
+medians <- medians[c(F,T)]
+
+#transpose
+medians_t <- t(medians)
+medians_t <- as.data.frame(medians_t)
+medians2 <- medians_t[-1,]
+head(medians_t)
+medians2$plot <- c("site 1","site 2","site 3", "site 4", "site 5", "site 6",
+                  "site 7", "site 8", "site 9", "site 10")
+
+
+medians2t <- transpose(medians2) 
+medians2t <- as.data.frame(medians2t)
+medians2 <- medians2[-1,]
+row.names(medians2t) <- c("meds_MD","diff_MD","meds_MW","diff_MW","meds_VD","diff_VD","meds_VW","dif_VW","meds_W","diff_W","meds99_19")
+medians2 <- medians2[-c(1, 3, 5,7,9), ] 
+
+
+med_MW <- medians[-c(2,3,4,5)]
+names(med_MW)
+
+#create groundwater subset-----
+#create meds_gw
+meds_gw <- subset(meds, (Site %in% c(1,3,4)))
+#create non-groundwater subset
+meds_rest <- subset(meds, (Site %in% c(7,8,9,11)))
+meds_dw <- subset(meds, (Site %in% c(2,5,6)))
+
+meds_s <-subset(meds,(Site %in% c(2,5,6,7,8,9,10,11)))
+meds_r <-subset(meds,(Site %in% c(7,8,9,11)))
+meds_ss <-subset(meds,(Site %in% c(10)))
+meds_dg <-subset(meds,(Site %in% c(2,5,6)))
+
+class(wys_gw$wy)
+#create groundwater subset
+wys_gw <- subset(wy_meds, (plot_name %in% c("1_L7_NDVI","3_L7_NDVI","4_L7_NDVI")))
+wys_gw2 <- subset(wys_gw,(wy %in% c("1999","2000","2001","2002","2003","2004",
+                                    "2005","2006","2007","2008","2009","2010",
+                                    "2011","2012","2013","2014","2015","2016",
+                                   "2017","2018")))
+
+wys_dg <- subset(wy_meds, (plot_name %in% c("2_L7_NDVI","5_L7_NDVI","6_L7_NDVI")))
+wys_dg2 <- subset(wys_dg,(wy %in% c("1999","2000","2001","2002","2003","2004",
+                                    "2005","2006","2007","2008","2009","2010",
+                                    "2011","2012","2013","2014","2015","2016",
+                                    "2017","2018")))
+
+
+wys_r <- subset(wy_meds, (plot_name %in% c("7_L7_NDVI","8_L7_NDVI","9_L7_NDVI", "11_L7_NDVI")))
+wys_r2 <- subset(wys_r,(wy %in% c("1999","2000","2001","2002","2003","2004",
+                                    "2005","2006","2007","2008","2009","2010",
+                                    "2011","2012","2013","2014","2015","2016",
+                                    "2017","2018")))
+wys_ss <- subset(wy_meds, (plot_name %in% c("10_L7_NDVI")))
+wys_ss2 <- subset(wys_ss,(wy %in% c("1999","2000","2001","2002","2003","2004",
+                                   "2005","2006","2007","2008","2009","2010",
+                                   "2011","2012","2013","2014","2015","2016",
+                                   "2017","2018")))
+
+
+bxp_gw_wys <- ggplot(wys_gw2, aes(x= wy, y= NDVI, fill="brown")) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+#  scale_fill_manual(values=c("white", "bisque", "cornflowerblue", "brown","blue", "deepskyblue"))+
+  theme(legend.position="none") 
+ # xlab("Rainfall period")
+
+bxp_gw_wys
+
+
+bxp_dg_wys <- ggplot(wys_dg2, aes(x= wy, y= NDVI, fill="brown")) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  #  scale_fill_manual(values=c("white", "bisque", "cornflowerblue", "brown","blue", "deepskyblue"))+
+  theme(legend.position="none") 
+# xlab("Rainfall period")
+
+bxp_dg_wys
+
+
+bxp_r_wys <- ggplot(wys_r2, aes(x= wy, y= NDVI, fill="brown")) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  #  scale_fill_manual(values=c("white", "bisque", "cornflowerblue", "brown","blue", "deepskyblue"))+
+  theme(legend.position="none") 
+# xlab("Rainfall period")
+
+bxp_r_wys
+
+bxp_ss_wys <- ggplot(wys_ss2, aes(x= wy, y= NDVI, fill="brown")) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  #  scale_fill_manual(values=c("white", "bisque", "cornflowerblue", "brown","blue", "deepskyblue"))+
+  theme(legend.position="none") 
+# xlab("Rainfall period")
+
+
+bxp_ss_wys
+
+fig_wys <- ggarrange(bxp_gw_wys  + rremove("ylab") + rremove("xlab"),
+                      bxp_dg_wys + rremove("ylab") + rremove("xlab"),
+                      bxp_r_wys + rremove("ylab") + rremove("xlab"),
+                      bxp_ss_wys + rremove("ylab") + rremove("xlab"),
+                      ncol = 1, nrow = 4,
+                      align = "hv",
+                      font.label = list(size = 10, color = "black", face = "bold", family = NULL),
+                      labels=c("Shallow groundwater sites", "Deeper groundwater sites", "Regeneration sites", "Slow surface drainage site"))
+
+fig_wys
+
+
+#create non-groundwater subset
+meds_s <-subset(meds,(Site %in% c(2,5,6,7,8,9,10,11)))
+meds_r <-subset(meds,(Site %in% c(7,8,9,11)))
+meds_ss <-subset(meds,(Site %in% c(10)))
+meds_dg <-subset(meds,(Site %in% c(2,5,6)))
+
+
+
+#NDVI by wet season code and site type, final plots --------
+meds_gw$Code <- factor(meds_gw$Code, levels=c("99_18","VD","MD","MW","W","VW"))
+
+bxp_meds_gw <- ggplot(meds_gw, aes(x= Code, y= NDVI, fill=Code)) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  scale_fill_manual(values=c("dodgerblue","dodgerblue","dodgerblue","dodgerblue","dodgerblue","dodgerblue"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.8)+
+  xlab("Shallow groundwater sites")+
+  ylab("")
+
+fin1 <- bxp_meds_gw + theme(legend.position="none")
+meds_dw$Code <- factor(meds_dw$Code, levels=c("99_18","VD","MD","MW","W","VW"))
+
+bxp_meds_r <- ggplot(meds_dw, aes(x= Code, y= NDVI, fill=Code)) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  scale_fill_manual(values=c("tomato","tomato","tomato","tomato","tomato","tomato"))+
+  theme(legend.position="none") +
+  theme_bw() +
+  ylim(0.2,0.8)+
+  xlab("Deep groundwater sites - no intervention")+
+  ylab("")
+
+fin2 <- bxp_meds_r + theme(legend.position="none")
+
+meds_rest$Code <- factor(meds_rest$Code, levels=c("99_18","VD","MD","MW","W","VW"))
+
+bxp_meds_rest <- ggplot(meds_rest, aes(x= Code, y= NDVI, fill=Code)) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  scale_fill_manual(values=c("forestgreen","forestgreen","forestgreen","forestgreen","forestgreen","forestgreen"))+
+  theme(legend.position="none") +
+  theme_bw()+
+  ylim(0.2,0.8)+
+  xlab("Deep groundwater sites - with restoration")+
+  ylab("")
+
+fin3 <- bxp_meds_rest + theme(legend.position="none")
+
+
+fig_meds <- ggarrange(bxp_meds_gw  + rremove("ylab") + rremove("xlab"),
+                      bxp_meds_dg + rremove("ylab") + rremove("xlab"),
+                      bxp_meds_r + rremove("ylab") + rremove("xlab"),
+                      bxp_meds_ss + rremove("ylab") + rremove("xlab"),
+                      ncol = 4, nrow = 1,
+                      align = "hv",
+                      font.label = list(size = 10, color = "black", face = "bold", family = NULL),
+                      labels=c("Shallow groundwater sites", "Deeper groundwater sites", "Regeneration sites", "Slow surface drainage site"))
+
+fig_meds
+
+trees <- read.csv("tree_site.csv")
+
+names(trees)
+trees <- trees %>%
+  rename (Site = ?..Site)
+
+trees_meds <- merge(meds, trees)
+
+trees_meds_VD <- merge(meds_VD, trees)
+
+bxp4 <- ggplot(trees_meds, aes(x= Tree.density, y= NDVI, fill=Tree.density)) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  #scale_fill_manual(values=c("brown", "cornflowerblue", "bisque","blue", "deepskyblue"))+
+  theme(legend.position="none") +
+  xlab("Tree Density")
+
+bxp4
+
+
+NDVI_by_rainbin <- ggarrange(bxp1 + rremove("ylab") + rremove("xlab") + rremove("x.text"), bxp2 + rremove("ylab") + rremove("xlab") + rremove("x.text"),
+                          bxp3 + rremove("ylab") + rremove("xlab") +  rremove("x.text"),
+                          bxp4 + rremove("ylab") + rremove("xlab")+ rremove("x.text"), bxp5 + rremove("ylab") + rremove("xlab") + rremove("x.text"),
+                          bxp6 + rremove("ylab") + rremove("xlab")+rremove("x.text"), bxp7 + rremove("ylab") + rremove("xlab") + rremove("x.text"), 
+                          bxp8 + rremove("ylab") + rremove("xlab")+rremove("x.text"), bxp9 + rremove("ylab") + rremove("xlab") + rremove("x.text"),
+                          bxp11 + rremove("ylab") + rremove("xlab") + rremove("x.text"),
+                          ncol = 4, nrow = 3,
+                          align = "hv", 
+                          font.label = list(size = 10, color = "black", face = "bold", family = NULL),
+                          labels = c("1","2","3","4","5","6","7","8","9","10"),
+                          hjust = 0.1,
+                          vjust = 0.9,
+                          common.legend = TRUE, legend = "bottom")
+
+NDVI_by_rainbin
+
+
+# get amplitudes -------
+
+VD <- subset(merged, Code=="VD", select=c("Date.y", "NDVI", "plot_name"))
+
+amps_VD <- 
+  
+  for (plot in plot_list)
+    
+    amp <- max(NDVI) - min(NDVI)
+    print(amp)
+
+
+VD_1 <- subset(anomaly_1, Code=="VD", select=c("Date.y","NDVI"))
+
+amp_VD_1 <- max(VD_1$NDVI) - min(VD_1$NDVI)
+amp_VD_1
+
+fig <- ggarrange(bxp1_dryrbin1 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin2 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin3 + rremove("ylab") + rremove("xlab"),
+          bxp1_dryrbin4 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin5 + rremove("ylab") + rremove("xlab"),
+          bxp1_dryrbin6 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin7 + rremove("ylab") + rremove("xlab"), 
+          bxp1_dryrbin8 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin9 + rremove("ylab") + rremove("xlab"),
+          bxp1_dryrbin10 + rremove("ylab") + rremove("xlab"), bxp1_dryrbin11 + rremove("ylab") + rremove("xlab"),
+    labels = NULL,
+    ncol = 4, nrow = 3,
+    common.legend = TRUE, legend = "bottom",
+    align = "hv", 
+    font.label = list(size = 10, color = "black", face = "bold", family = NULL, position = "top"))
+ 
+
+gplot(anomaly_1, aes(x= Code, y= NDVI, fill=Code)) + 
+  geom_boxplot(alpha=0.7 ) +
+  stat_summary(fun=mean, geom="point", shape=20, size=3) +
+  scale_fill_brewer(palette="Dark2")+
+  theme(legend.position="none") 
+
+
