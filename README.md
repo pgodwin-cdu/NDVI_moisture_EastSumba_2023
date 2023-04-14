@@ -17,7 +17,11 @@ https://code.earthengine.google.com/?asset=users/pennybgodwin/Regeneration_2_327
 https://code.earthengine.google.com/?asset=users/pennybgodwin/Well_Wunga_1_32751 <br>
 https://code.earthengine.google.com/?asset=users/pennybgodwin/Wunga_Well_2_32751 <br>
 
-**Median_Haharu_L7_NDVI** is the GEE script to create median NDVI values at the Haharu district scale, using the Haharu shapefile that has been shared here. We downloaded NDVI data from GEE as a .csv file.
+**Median_Haharu_L7_NDVI** is the GEE script to create median Landsat 7 NDVI values at the Haharu district scale, using the Haharu shapefile that has been shared here. We downloaded NDVI data from GEE as a .csv file.
+
+**Median_Haharu_MODIS_NDVI** is the GEE script to create median MODIS Terra NDVI values at the Haharu district scale, using the Haharu shapefile that has been shared here. We downloaded NDVI data from GEE as a .csv file.
+
+
 
 
 
