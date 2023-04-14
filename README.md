@@ -23,5 +23,8 @@ https://code.earthengine.google.com/?asset=users/pennybgodwin/Wunga_Well_2_32751
 
 **MODIS_L7_Haharu_stats** is the R script we used for computing Haharu scale NDVI statistics for MODIS and Landsat 7 timeseries
 
+**NDVI_L7_Haharu.tif** is a .tif file generated in GEE as a composite image of median NDVI values between 2000 and 2018 with a cloud mask applied. This script we used to create this image is here: <br>
+https://code.earthengine.google.com/c3118944cf7c27df7b3eb7fcdc4013e7
+
 
 
