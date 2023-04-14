@@ -1,0 +1,175 @@
+library(ggplot2)
+library(ggpubr)
+library(ggalt)
+library(zoo)
+library(lubridate)
+library(dplyr)
+
+mean_rain  <- read.csv(file = "rainfall-bmkg.csv", 
+                       header=TRUE,  
+                       strip.white=TRUE,
+                       blank.lines.skip = TRUE,
+                       stringsAsFactors = TRUE)
+
+mean_NDVI  <- read.csv(file = "median_Haharu_23.csv", 
+                       header=TRUE,  
+                       strip.white=TRUE,
+                       blank.lines.skip = TRUE,
+                       stringsAsFactors = TRUE)
+
+
+head(mean_NDVI)
+tail(mean_NDVI)
+class(mean_NDVI$system.time_start) #factor
+dim(mean_NDVI) #715,2
+dim(mean_rain) #228, 3
+
+#add date column with as.Date date formats
+mean_NDVI$date <- as.Date(mean_NDVI$system.time_start, "%b %d, %Y")
+head(mean_NDVI)
+class(mean_NDVI$date) #Date
+# set strings as factors to false globally 
+options(stringsAsFactors = FALSE)
+#limit data from 2015 to 2018
+startdate <- "01-01-2015"
+enddate <- "31-12-2018"
+
+str(mean_NDVI)
+str(mean_rain)
+head(mean_rain)
+str(mean_NDVI)
+
+#use function from zoo package to create yearmon column
+mean_rain$Date <- as.yearmon(paste(mean_rain$Year,mean_rain$Month),"%Y %m")
+
+class(mean_rain$Date) #yearmon
+rain15_18 <- mean_rain %>% filter(between(Date, as.yearmon('Jan 2015'), as.yearmon('Dec 2018')))
+NDVI15_18 <- mean_NDVI %>% filter(between(date, as.Date("2015-01-01"), as.Date("2018-12-31")))
+
+#aggregate NDVI data to monthly
+NDVI15_18 <- NDVI15_18 %>% mutate(year = year(date)) %>% 
+  mutate(month = month(date))
+
+NDVI1518month <- NDVI15_18 %>% 
+  select(-date) %>% 
+  group_by(year,month) %>%
+  dplyr::summarise(NDVI_month = mean(NDVI, na.rm = TRUE)) 
+
+#rename 'Month', 'Year' in rain df to 'month', 'year', then merge with NDVI df
+rain15_18 <- rain15_18 %>% 
+  rename(
+    month = Month,
+    year = Year
+  )
+
+mean15_18<- merge(NDVI1518month,rain15_18,by=c("month","year"), all = TRUE)
+
+# sort data by time
+mean15_18 <- mean15_18[
+  with(mean15_18, order(mean15_18$year, mean15_18$month)),
+]
+head(mean15_18)
+dim(mean15_18) #48, 5
+summary(mean15_18)
+
+ccf_results_1518 <- ccf(mean15_18$Precipitation,mean15_18$NDVI_month, na.action=na.pass)
+
+ccf_res_15_18 <- cbind(ccf_results_1518$acf, ccf_results_1518$lag)
+ccf_df_1518 <- as.data.frame(ccf_res_15_18)
+names(ccf_df_1518) <- c("r","lag_months")
+
+class(ccf_df_1518$lag_months) #numeric
+nve <- ccf_df_1518$lag_months*(-1)
+ccf_df_1518$lag_months <- nve
+head(ccf_df_1518)
+
+p_rain1518 <- ggplot(data=ccf_df_1518)+
+  geom_lollipop(aes(x=lag_months, y=r, point.size=3 ))+  #use ggalt package
+  #geom_smooth(colour="red", alpha=0.2) +
+  xlab("Lagged rainfall timeseries(months)[ 2015:2018 time series] ") +
+  ylab("") 
+
+p_rain1518
+rain2_1518 <- p_rain1518 + scale_x_continuous(limits=c(0,12),breaks=seq(0,12,1))+
+  scale_y_continuous(limits=c(0,0.8), breaks=seq(0,0.8,0.2), expand=c(0,0)) +
+  theme_bw()
+rain2_1518
+
+# do cross correlation - need to specify na.action=na.pass due to missing values
+ccf(mean15_18$Precipitation,mean15_18$NDVI, 12, xlim=c(-12,0),
+    xlab="Lag in rainfall timeseries(months)",
+    ylim=c(0,0.7),
+    ylab = "Cross-correlation",
+    main="Cross-correlations between rainfall & NDVI, Haharu[2015:2018]", na.action=na.pass)
+
+# Now need to summarise data by month for whole timeseries--------
+
+#add a month column to the data frame 
+mean_NDVI_monthly <- mean_NDVI %>%
+  mutate(month = month(date))
+
+head(mean_NDVI_monthly)
+head(mean_rain)
+
+summary(mean_NDVI_monthly)
+summary(mean_rain)
+
+#add a year column to the data frame
+mean_NDVI_month_year <- mean_NDVI_monthly %>%
+  mutate(year =year(date))
+head(mean_NDVI_month_year)
+
+# have both month and year as small letters in csv files (i.e. need to change in Rfall file)
+#rename column name using dplyr
+
+mean_rain <- mean_rain %>% rename(month = Month)
+
+head(mean_rain)
+
+mean_rain <- mean_rain %>% rename(year = Year)
+
+head(mean_rain)
+
+# merge all months and year of rainfall even if missing NDVI data to make sure have timeseries with 1 month difference for all samples (assuming the rainfall data has no missing months)
+meandata <- merge(mean_NDVI_month_year,mean_rain,by=c("month","year"), all = TRUE)
+dim(meandata) #722, 7
+head(meandata)
+
+# sort data by time
+meandata <- meandata[
+  with(meandata, order(meandata$year, meandata$month)),
+]
+head(meandata)
+dim(meandata) #722,7
+summary(meandata)
+# do cross correlation - need to specify na.action=na.pass due to missing values
+ccf(meandata$Precipitation,meandata$NDVI, 12, xlim=c(-12,0),
+    xlab="Lag in rainfall timeseries(months)",
+    ylim=c(0,0.7),
+    ylab = "Cross-correlation",
+    main="Cross-correlations between rainfall & NDVI, Haharu", na.action=na.pass)
+
+
+ccf_results_r <- ccf(meandata$Precipitation,meandata$NDVI, na.action=na.pass)
+
+ccf_res_r <- cbind(ccf_results_r$acf, ccf_results_r$lag)
+ccf_df_r <- as.data.frame(ccf_res_r)
+names(ccf_df_r) <- c("r","lag_months")
+
+class(ccf_df_r$lag_months) #numeric
+nve <- ccf_df_r$lag_months*(-1)
+ccf_df_r$lag_months <- nve
+head(ccf_df_r)
+
+p_rain <- ggplot(data=ccf_df_r)+
+  geom_lollipop(aes(x=lag_months, y=r, point.size=3 ))+  #use ggalt package
+  #geom_smooth(colour="red", alpha=0.2) +
+  xlab("Lagged rainfall timeseries(months)[1999:2018 time series]") +
+  ylab("") 
+
+p_rain
+
+rain2 <- p_rain + scale_x_continuous(limits=c(0,12),breaks=seq(0,12,1))+
+  scale_y_continuous(limits=c(0,0.75), breaks=seq(0,0.75,0.2), expand=c(0,0)) +
+  theme_bw()
+rain2
