@@ -1,0 +1,47 @@
+library(tidyverse)
+
+#1. Function to remove the rows, using subset, where red = 2 to 
+myfunc <- function(file) {
+  df   <- read.csv(file, stringsAsFactors = TRUE)
+  df %>% subset(RED!="2")
+}
+
+# 2. Vector of the csv file names 
+files <- c("1_L7_NDVI.csv", "2_L7_NDVI.csv", "3_L7_NDVI.csv","4_L7_NDVI.csv","5_L7_NDVI.csv","6_L7_NDVI.csv",
+           "7_L7_NDVI.csv","8_L7_NDVI.csv","9_L7_NDVI.csv","10_L7_NDVI.csv","11_L7_NDVI.csv")
+
+#"Files" is a character vector, so that's what the function is looking for
+#Listresults is a list
+
+# 3. Run the myfunc function across all files in the working directory
+listresults <-lapply(files,myfunc)
+
+#check length of the list before removing additional values
+lengths(listresults) #note number of observations is 574
+
+
+#try indexing listresults, first, can look at 1st dataset (1st element) using [[]
+listresults[[1]] 
+listresults[1] 
+listresults[[RED]]
+
+lapply(listresults,'[',7) #this is the cloud values for all datasets
+
+listresults[names(listresults) !="clouds"]
+
+#run laaply to filter to cloudfree values
+
+listresults <- lapply(listresults, function(i)i[i[,7] == 0,]) # filter to cloud free values (now only 405 obs)
+
+
+#run laaply to filter out to cloudshadow 
+
+listresults <- lapply(listresults, function(i)i[i[,8] == 0,]) # filter to cloud shadow free values (now only 383 obs)
+
+
+# Extract the datasets to the global environment
+names(listresults) <- paste("clean", c(1,2,3,4,5,6,7,8,9,10,11), sep = "_")
+
+#extract dataframes
+
+list2env(listresults,globalenv())
