@@ -1,0 +1,134 @@
+var landsatCollection =  ee.ImageCollection("LANDSAT/LE07/C01/T1_SR").filterBounds(Haharu)
+                                                             .select('B3','B4','pixel_qa');
+
+
+var addNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['B4', 'B3']).rename('NDVI');  //normalizedDifference([NIR, Red])
+  return image.addBands(ndvi);
+};
+
+
+var landsatCollectionWithNDVI = landsatCollection.map(addNDVI);
+
+
+// convert feature collection into list, needed for the function below
+var pointsAsList = Karaha.toList(1);
+
+
+// GEE needs to return feature or image if a function is mapped over a collection
+// however, the objective is exporting the data sets created in the loop
+// hence, this function will be mapped over a list; "n" is the index of the element in the list of plots
+var exportTablePerPlot = function(n){  
+
+  var plot = pointsAsList.get(0);
+  plot = ee.Feature(plot);
+// have a look at what is in the list
+print (plot, 'plot')
+
+
+  var plotName = ee.String.encodeJSON(plot.get('ID')).getInfo();
+  
+  var extractData = function(image){
+    var nir = image.reduceRegion({geometry: plot.geometry(),
+                                  reducer: ee.Reducer.first(),
+                                  scale: 10 
+                                  }).get('B4');                           
+    var red = image.reduceRegion({geometry: plot.geometry(),
+                                   reducer: ee.Reducer.first(),
+                                   scale: 10
+                                  }).get('B3');
+    var ndvi = image.reduceRegion({geometry: plot.geometry(),
+                                 reducer: ee.Reducer.first(),
+                                 scale: 10
+                                 }).get('NDVI');
+    var qa = image.reduceRegion({geometry: plot.geometry(),
+                                reducer: ee.Reducer.first(),
+                                scale: 10
+                                }).get('pixel_qa');
+    
+    //if NDVI value exists, create feature with all data of interest, otheriwse create a feature containing only the date                                  
+    var feat = ee.Algorithms.If(ee.Number(ndvi), 
+                      ee.Feature(null, {'date': image.date().format('YYYY-MM-dd'),
+                                        'plot_name': plotName + '_L7_NDVI',  //just in case file name is changed by mistake
+                                        'NDVI': ee.Number(ndvi), // no need for scaling ndvi
+                                        'NIR': ee.Number(nir).divide(10000), //scale: 0.0001
+                                        'RED': ee.Number(red).divide(10000), //scale: 0.0001
+                                        'qa': qa, //binary value as integer
+                                        'clouds': ee.Algorithms.If(ee.Number(qa).bitwiseAnd(1<<5).eq(0),0,1), // returns 1 if clouds present, 0 is clear
+                                        'cloud_shadows': ee.Algorithms.If(ee.Number(qa).bitwiseAnd(1<<3).eq(0),0,1) // returns 1 if shadow present, 0 is clear
+                                                                          
+                                        }),
+                      ee.Feature(null, {'date': image.date().format('YYYY-MM-dd')})
+                      );
+    return feat;
+  };
+  
+  var ndviTimeSeries = landsatCollectionWithNDVI.map(extractData);
+  
+  return Export.table.toDrive({collection: ndviTimeSeries,
+                                description: plotName + '_L7_NDVI',
+                                fileFormat: 'CSV',
+                                folder: 'GEE L7 May 2024',
+                                selectors: 'date, plot_name, NDVI, NIR, RED, qa, clouds, cloud_shadows'
+                                });
+
+};
+
+
+// create a list of indices (there are 43 features in the feature collection of interest)
+var pointsIndices = [];
+for (var i = 0; i < 2; i++) {pointsIndices.push(i)}
+
+// create and export the data sets (one per plot)
+pointsIndices.map(exportTablePerPlot);
+
+
+
+
+
+
+// Average LAI time series for the whole Hararu district  **Can take up to 30 mins**
+var extractDataDistrict = function(image){
+    var ndviMean = image.reduceRegion({geometry: Haharu.geometry(),
+                                      reducer: ee.Reducer.mean(),
+                                      scale: 30
+                                      }).get('NDVI');  
+    var goodPixels = image.reduceRegion({geometry: Haharu.geometry(),
+                                      reducer: ee.Reducer.count(),
+                                      scale: 30
+                                      }).get('NDVI');
+    var totPixels = image.unmask().reduceRegion({geometry: Haharu.geometry(),
+                                                  reducer: ee.Reducer.count(),
+                                                  scale: 30
+                                                  }).get('NDVI');
+                                      
+    var feat = ee.Feature(null, {'date': image.date().format('YYYY-MM-dd'),
+                                'NDVI_Hararu_L7': ee.Algorithms.If(ee.Number(ndviMean), ee.Number(ndviMean)), 
+                                'good_pixels': goodPixels, // number of pixels used for computing NDVI mean
+                                'tot_pixels': totPixels // total number of pixels if the quality mask wasn't applied
+                                  });
+    return feat;                                     
+};  
+
+// function for excluding pixels with clouds or cloud shadows
+var maskClouds = function(image) {
+  
+  var qaBand = image.select('pixel_qa');
+  
+  var mask = qaBand.bitwiseAnd(1<<3).eq(0)   
+        .and(qaBand.bitwiseAnd(1<<5).eq(0)); 
+        
+  return image.updateMask(mask);
+};
+
+var ndviCollectionMasked = landsatCollectionWithNDVI.map(maskClouds);
+
+var ndviTimeSeriesDisctrict = ndviCollectionMasked.map(extractDataDistrict);
+
+
+Export.table.toDrive({collection: ndviTimeSeriesDisctrict,
+                      description: 'Hararu_L7_NDVI_timeseries',
+                      fileFormat: 'CSV',
+                      folder: 'Google EE results',
+                      selectors: 'date, NDVI_Hararu_L7, good_pixels, tot_pixels'
+                      });
