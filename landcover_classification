@@ -1,2 +1,123 @@
 https://code.earthengine.google.com/d1d2edb9bdda7c04817b74d3b74f52f0 
 
+//Navigate to area of interest
+Map.setCenter(119.92, -9.40, 8);
+
+var image = ee.Image(ee.ImageCollection("COPERNICUS/S2")
+  .filterDate('2018-01-01', '2018-07-31')
+  .filterBounds(roi2));
+
+//Cloud mask for sentinel
+// Function to cloud mask from the pixel_qa band of sent2 data.
+// (From the Code Editor Examples > Cloud Masking)
+function maskS2clouds(image) {
+    var qa = image.select('QA60')
+
+  // Bits 10 and 11 are clouds and cirrus, respectively.
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(
+             qa.bitwiseAnd(cirrusBitMask).eq(0))
+
+// Return the masked and scaled data, without the QA bands.
+  return image.updateMask(mask).divide(10000)
+      .select("B.*")
+      .copyProperties(image, ["system:time_start"])
+}
+     
+  // Map the function between 2014 and 2020
+var sent2_nocloud = ee.ImageCollection("COPERNICUS/S2")
+    .filterDate('2018-01-01','2018-07-01')
+    .filterBounds(roi2)
+    .map(maskS2clouds);
+
+var composite = sent2_nocloud.median();
+
+Map.addLayer(composite, {bands:['B4','B3','B2'], min:0, max:0.3}, 'True colour image');
+//add field points to aid in classification
+Map.addLayer (all_points, {color: 'orange'}, 'All points')
+
+//Add "All Layers" field points for additional field photo references
+
+Map.addLayer (Field_points, {color: 'yellow'}, 'Field points')
+
+
+//Add a new geometry layer to create training points
+//There are two geometry layers: "Field_pts" and "modified-all-points"
+
+//Merge training points for landcover classes into single featurecollection
+var classNames = Cashew_orchard.merge(Mahogany_plantation_2011).merge(Family_agroforestry)
+.merge(Low_density_Gmelina_Cashew).merge(Dense_Themeda_Grass_cover).merge(Mature_fig_single)
+.merge(Mature_trees_spring).merge(Teak_mahogany_plantation).merge(medium_mango_local_spring).merge(surface_water)
+.merge(Ziziphus_Mauritiana).merge(dense_grass_imperata).merge(bare_ground_rock_road_sand).merge(medium_density_mixed_grass)
+.merge(family_vegetable_plot);
+
+//Print the landcover feature collection and inspect the features
+print(classNames, "ClassNames")
+
+// Classes are: 1)Cashew_orchard, 2)Mahogany_plantation_2011, 3) Family_agroforestry
+// 4)Low_density_Gmelina_cashew, 5)Dense_Themeda_Grass_cover, 6) Mature_fig_single, 7) Mature_trees_spring, 8)Teak_mahogany, 
+//9)Medium_mango_local_spring, 10)Surface_water, 11)Ziziphus_mauritania
+//12) Dense_grass_imperata, 13)Bare_ground_rock_bldg_road, 14)Medium_density_mixed_grass, 
+//15)Family_vegetable_plot
+
+
+//Create training data
+var bands = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8'];
+var training = composite.select(bands).sampleRegions({
+  collection: classNames,
+  properties: ['landcover'],
+  scale: 10
+});
+print(training);
+
+//Train the classifier and run the classification
+var classifier = ee.Classifier.smileRandomForest(15).train({
+  features: training,
+  classProperty: 'landcover',
+  inputProperties: bands
+});
+
+print(classifier, 'classifier')
+
+//Run the classification
+var classified = composite.select(bands).classify(classifier);
+
+//Create a palette for displaying classification
+var palette = ee.List (['DarkKhaki','DarkOliveGreen', 'DimGrey', 'DarkGreen', '#FFD700','#00A86B', 'DarkSeaGreen', 'DarkSlateGrey', 'DarkSalmon',
+'blue', 'burlywood', 'DarkGoldenrod', '#FF9900',  '#F9A602', '#FFF7A7'])
+var landcover = ee.List ([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+
+var classesStyled = ee.FeatureCollection(
+  landcover.map(function(lc){
+    var color = palette.get(landcover.indexOf(lc))
+     var markerStyle = { color: 'white', pointShape: 'diamond', 
+      pointSize: 4, width: 1, fillColor: color}
+    return classNames.filter(ee.Filter.eq('landcover', lc))
+                .map(function(point){
+                  return point.set('style', markerStyle)
+                })
+      })).flatten();
+    
+
+//Display classification
+Map.centerObject(classNames, 11);
+var classesViz = {min: 0, max: 15, palette: ['#997950', '#c04000', '#828282','#0B6623','#BDB7AB','#056608','#3BB143','#00A86B',
+'#4F7942','#964000','#89CFEF','#006994','#D5B85A','#D9DDDC', '#8F9779', '#F9A602', '#2e8B57']}
+Map.addLayer(classified, classesViz, 'classification');
+
+
+Map.addLayer(classesStyled.style({styleProperty:"style"}),{},'Classes')
+
+//Export the image to Google Drive 
+// Export the image, specifying scale and region.
+Export.image.toDrive({
+  image: classified,
+  description: 'Sent_veg_classification',
+  scale: 10,
+  region: Haharu_1,
+  maxPixels: 1e9
+});
+
